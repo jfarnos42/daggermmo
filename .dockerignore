@@ -1,0 +1,10 @@
+# Evita copiar binarios o archivos innecesarios
+*.log
+*.tmp
+*.db
+*.swp
+*.swo
+.git
+.gitignore
+Dockerfile
+README.md
