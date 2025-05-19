@@ -1,39 +1,67 @@
-# Nombre de la imagen
-IMAGE_NAME=daggerfall-server-dev
+DEV_IMAGE_NAME=daggerfall-server-dev
+RELEASE_IMAGE_NAME=daggerfall-server
+MODE ?= dev
 
-# Directorio local donde se almacenará la base de datos
-DB_VOLUME=$(PWD)/dbdata
+ifeq ($(MODE),release)
+	IMAGE_NAME=$(RELEASE_IMAGE_NAME)
+	CONTAINER_WORKDIR=/home/daggeruser
+	CODE_MOUNT=
+else
+	IMAGE_NAME=$(DEV_IMAGE_NAME)
+	CONTAINER_WORKDIR=/app
+	CODE_MOUNT=-v $(PWD):/app
+endif
 
-# Ruta del código dentro del contenedor
-CONTAINER_WORKDIR=/app
+DB_VOLUME=daggerfall-db
 
-# Comando base de docker run
 DOCKER_RUN=docker run --rm -it \
-	-v $(PWD):$(CONTAINER_WORKDIR) \
+	$(CODE_MOUNT) \
 	-v $(DB_VOLUME):/home/daggeruser \
 	-w $(CONTAINER_WORKDIR) \
 	$(IMAGE_NAME)
 
-.PHONY: all build test initdb run
+.PHONY: dev release build test initdb run local initdb-local clean fclean create-volume
 
-# Compila la imagen de desarrollo
-build:
-	docker build -t $(IMAGE_NAME) .
+dev:
+	docker build -f Dockerfile -t $(DEV_IMAGE_NAME) .
 
-# Corre todos los tests del proyecto
+release:
+	docker build -f Dockerfile -t $(RELEASE_IMAGE_NAME) --target runtime .
+
+create-volume:
+	docker volume create $(DB_VOLUME)
+
 test:
 	$(DOCKER_RUN) go test ./... -v
 
-# Inicializa la base de datos (crea daggerfall.db en dbdata/)
-initdb:
+initdb: create-volume
+ifeq ($(MODE),release)
+	$(DOCKER_RUN) ./daggerfall -initdb
+else
 	$(DOCKER_RUN) go run cmd/server/main.go -initdb
+endif
 
-# Ejecuta el servidor (sin --rm para mantenerlo activo)
-run:
+initdb-local: local
+	./Local/daggerfall -initdb -dbpath=Local/daggerfall.db
+
+run: create-volume
 	docker run -it \
-		-v $(PWD):$(CONTAINER_WORKDIR) \
+		$(CODE_MOUNT) \
 		-v $(DB_VOLUME):/home/daggeruser \
 		-w $(CONTAINER_WORKDIR) \
 		-p 8080:8080 \
 		-p 7777:7777 \
-		$(IMAGE_NAME) go run cmd/server/main.go
+		$(IMAGE_NAME)
+
+local:
+	mkdir -p Local
+	go build -o Local/daggerfall ./cmd/server/main.go
+
+clean:
+	rm -rf Local/daggerfall Local/daggerfall.db
+
+fclean: clean
+	docker ps -aq | xargs -r docker stop
+	docker ps -aq | xargs -r docker rm
+	docker images -aq | xargs -r docker rmi -f
+	docker volume ls -q | xargs -r docker volume rm
