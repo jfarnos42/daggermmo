@@ -8,28 +8,20 @@ import (
     "github.com/jfarnos42/daggermmo/internal/database"
 )
 
-func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(status)
-    json.NewEncoder(w).Encode(data)
-}
-
 func RootHandler(w http.ResponseWriter, r *http.Request) {
-    w.Write([]byte("root ok\n"))
+    w.Write([]byte("Welcome to Daggerfall MMO Server"))
 }
 
 func HTTPHealthHandler(w http.ResponseWriter, r *http.Request) {
-    w.Write([]byte("http: ok"))
+    w.Write([]byte("HTTP server is healthy"))
 }
 
 func BDHealthHandler(w http.ResponseWriter, r *http.Request) {
-    err := database.PingDB()
-    if err != nil {
-        w.WriteHeader(http.StatusInternalServerError)
-        w.Write([]byte("bd: error"))
+    if database.DB == nil {
+        http.Error(w, "database not initialized", http.StatusInternalServerError)
         return
     }
-    w.Write([]byte("bd: ok"))
+    w.Write([]byte("Database connection is healthy"))
 }
 
 func AddPlayerHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,26 +32,28 @@ func AddPlayerHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    err := database.AddPlayer(username)
+    role := r.URL.Query().Get("role")
+    if role == "" {
+        role = "player"
+    }
+
+    err := database.AddPlayer(username, role)
     if err != nil {
         http.Error(w, "failed to add player: "+err.Error(), http.StatusInternalServerError)
         return
     }
 
-    w.Write([]byte("player added: " + username))
+    w.Write([]byte("player added: " + username + " with role: " + role))
 }
 
 func ListPlayersHandler(w http.ResponseWriter, r *http.Request) {
-    log.Println("ListPlayersHandler called")
     players, err := database.ListPlayers()
     if err != nil {
         http.Error(w, "failed to list players: "+err.Error(), http.StatusInternalServerError)
         return
     }
 
-    for _, p := range players {
-        w.Write([]byte(p + "\n"))
-    }
+    WriteJSON(w, http.StatusOK, players)
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -76,23 +70,59 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    WriteJSON(w, http.StatusOK, map[string]string{"token": token})
+    role, err := database.GetPlayerRole(username)
+    if err != nil {
+        // Opcional: definir un role por defecto o manejar el error
+        role = "player"
+    }
+
+    WriteJSON(w, http.StatusOK, map[string]string{
+        "token": token,
+        "role":  role,
+    })
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-    log.Println("logoutHandler called")
+    log.Println("LogoutHandler called")
     token := r.URL.Query().Get("token")
     if token == "" {
-        WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "token is required"})
+        http.Error(w, "token is required", http.StatusBadRequest)
         return
     }
 
     err := database.Logout(token)
     if err != nil {
-        WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+        if err.Error() == "invalid token or session not found" {
+            http.Error(w, err.Error(), http.StatusUnauthorized)
+            return
+        }
+        http.Error(w, "failed to logout: "+err.Error(), http.StatusInternalServerError)
         return
     }
 
-    WriteJSON(w, http.StatusOK, map[string]string{"message": "logout successful"})
+    w.Write([]byte("user logged out"))
 }
 
+func GetPlayerRoleHandler(w http.ResponseWriter, r *http.Request) {
+    log.Println("GetPlayerRoleHandler called")
+    username := r.URL.Query().Get("username")
+    if username == "" {
+        http.Error(w, "username is required", http.StatusBadRequest)
+        return
+    }
+
+    role, err := database.GetPlayerRole(username)
+    if err != nil {
+        http.Error(w, "failed to get player role: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Write([]byte(role))
+}
+
+// WriteJSON is a helper function to write JSON response
+func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(data)
+}

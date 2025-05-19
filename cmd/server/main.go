@@ -3,6 +3,7 @@ package main
 import (
     "log"
     "net/http"
+    "flag"
 
     "github.com/jfarnos42/daggermmo/internal/database"
     "github.com/jfarnos42/daggermmo/internal/network"
@@ -10,13 +11,20 @@ import (
 )
 
 func main() {
+    initDB := flag.Bool("initdb", false, "Initialize the database and exit")
+    flag.Parse()
+
     log.Println("Daggerfall MMO Server started.")
 
     err := database.InitDB("/home/daggeruser/daggerfall.db")
     if err != nil {
         log.Fatalf("Failed to initialize database: %v", err)
     }
-    log.Println("Database initialized successfully.")
+
+    if *initDB {
+        log.Println("Database initialized successfully (initdb mode).")
+        return
+    }
 
     go startHTTPServer()
     go startGameServer()
@@ -43,6 +51,7 @@ func startHTTPServer() {
     mux.HandleFunc("/listplayers", server.ListPlayersHandler)
     mux.HandleFunc("/login", server.LoginHandler)
     mux.HandleFunc("/logout", server.LogoutHandler)
+    mux.HandleFunc("/getplayerrole", server.GetPlayerRoleHandler) // <-- Añadido
 
     log.Println("HTTP health server listening on :8080")
     err := http.ListenAndServe(":8080", mux)

@@ -1,3 +1,4 @@
+# Etapa builder: compilar el binario
 FROM golang:1.24 AS builder
 
 WORKDIR /app
@@ -9,7 +10,9 @@ COPY . .
 
 RUN go build -o daggerfall ./cmd/server/main.go
 
-FROM debian:bookworm-slim
+
+# Etapa runtime: imagen ligera para producción
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
@@ -26,3 +29,16 @@ RUN chown -R daggeruser:daggeruser /home/daggeruser
 USER daggeruser
 
 CMD ["./daggerfall"]
+
+
+# Etapa dev: para desarrollo y tests
+FROM golang:1.24 AS dev
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+CMD ["/bin/bash"]

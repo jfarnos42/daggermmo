@@ -1,0 +1,61 @@
+package database
+
+import (
+    "os"
+    "testing"
+)
+
+func setupTestDB(t *testing.T) func() {
+    tmpfile, err := os.CreateTemp("", "testdb-*.sqlite")
+    if err != nil {
+        t.Fatalf("failed to create temp db file: %v", err)
+    }
+
+    err = InitDB(tmpfile.Name())
+    if err != nil {
+        t.Fatalf("InitDB failed: %v", err)
+    }
+
+    return func() {
+        os.Remove(tmpfile.Name())
+    }
+}
+
+func TestAddGetListPlayer(t *testing.T) {
+    cleanup := setupTestDB(t)
+    defer cleanup()
+
+    username := "testuser"
+    role := "tester"
+
+    // Test AddPlayer
+    err := AddPlayer(username, role)
+    if err != nil {
+        t.Fatalf("AddPlayer failed: %v", err)
+    }
+
+    // Test GetPlayerRole
+    gotRole, err := GetPlayerRole(username)
+    if err != nil {
+        t.Fatalf("GetPlayerRole failed: %v", err)
+    }
+    if gotRole != role {
+        t.Errorf("expected role %q, got %q", role, gotRole)
+    }
+
+    // Test ListPlayers
+    players, err := ListPlayers()
+    if err != nil {
+        t.Fatalf("ListPlayers failed: %v", err)
+    }
+    found := false
+    for _, p := range players {
+        if p == username {
+            found = true
+            break
+        }
+    }
+    if !found {
+        t.Errorf("ListPlayers did not return added player %q", username)
+    }
+}

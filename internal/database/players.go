@@ -6,22 +6,40 @@ import (
     "fmt"
 )
 
-func AddPlayer(username string) error {
+func AddPlayer(username, role string) error {
     if DB == nil {
         return errors.New("database not initialized")
     }
 
-    stmt, err := DB.Prepare("INSERT INTO players(username) VALUES(?)")
+    if role == "" {
+        role = "player"
+    }
+
+    stmt, err := DB.Prepare("INSERT INTO players(username, role) VALUES(?, ?)")
     if err != nil {
         return err
     }
     defer stmt.Close()
 
-    _, err = stmt.Exec(username)
+    _, err = stmt.Exec(username, role)
     if err != nil {
         return fmt.Errorf("failed to add player: %w", err)
     }
     return nil
+}
+
+func GetPlayerRole(username string) (string, error) {
+    if DB == nil {
+        return "", errors.New("database not initialized")
+    }
+
+    var role string
+    err := DB.QueryRow("SELECT role FROM players WHERE username = ?", username).Scan(&role)
+    if err != nil {
+        return "", err
+    }
+
+    return role, nil
 }
 
 func ListPlayers() ([]string, error) {
@@ -43,10 +61,5 @@ func ListPlayers() ([]string, error) {
         }
         players = append(players, username)
     }
-
-    if err := rows.Err(); err != nil {
-        return nil, err
-    }
-
     return players, nil
 }

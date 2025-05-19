@@ -2,7 +2,6 @@ package database
 
 import (
     "database/sql"
-    "fmt"
     "log"
 
     _ "github.com/mattn/go-sqlite3"
@@ -10,21 +9,24 @@ import (
 
 var DB *sql.DB
 
-func InitDB(dbFile string) error {
+func InitDB(filepath string) error {
     var err error
-    DB, err = sql.Open("sqlite3", dbFile)
+    DB, err = sql.Open("sqlite3", filepath)
     if err != nil {
-        return fmt.Errorf("failed to open database: %w", err)
+        return err
     }
 
-    if err = DB.Ping(); err != nil {
-        return fmt.Errorf("failed to connect to database: %w", err)
+    err = DB.Ping()
+    if err != nil {
+        return err
     }
 
-    if err = createTables(); err != nil {
-        return fmt.Errorf("failed to create tables: %w", err)
+    err = createTables()
+    if err != nil {
+        return err
     }
 
+    log.Println("Database initialized and tables created.")
     return nil
 }
 
@@ -34,7 +36,8 @@ func createTables() error {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE,
         level INTEGER DEFAULT 1,
-        experience INTEGER DEFAULT 0
+        experience INTEGER DEFAULT 0,
+        role TEXT DEFAULT 'Player'
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -49,11 +52,4 @@ func createTables() error {
         log.Println("Database tables checked/created successfully.")
     }
     return err
-}
-
-func PingDB() error {
-    if DB == nil {
-        return fmt.Errorf("database not initialized")
-    }
-    return DB.Ping()
 }
