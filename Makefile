@@ -1,82 +1,69 @@
-# Image names
 DEV_IMAGE_NAME=daggerfall-server-dev
 RELEASE_IMAGE_NAME=daggerfall-server
-MODE ?= dev
-
-# Paths and configuration
-ifeq ($(MODE),release)
-	IMAGE_NAME=$(RELEASE_IMAGE_NAME)
-	CONTAINER_WORKDIR=/home/daggeruser
-	CODE_MOUNT=
-	DB_PATH=/home/daggeruser/daggerfall.db
-else
-	IMAGE_NAME=$(DEV_IMAGE_NAME)
-	CONTAINER_WORKDIR=/app
-	CODE_MOUNT=-v $(PWD):/app
-	DB_PATH=$(PWD)/Local/daggerfall.db
-endif
-
 DB_VOLUME=daggerfall-db
 
-# Docker run base command
-DOCKER_RUN=docker run --rm -it \
-	$(CODE_MOUNT) \
-	-v $(DB_VOLUME):/home/daggeruser \
-	-w $(CONTAINER_WORKDIR) \
-	$(IMAGE_NAME)
+# Paths
+LOCAL_DIR=$(PWD)/Local
+DB_PATH_DEV=$(LOCAL_DIR)/daggerfall.db
+DB_PATH_REL=/home/daggeruser/daggerfall.db
 
-.PHONY: dev release local test initdb run run-release create-volume clean fclean
-
-# Build images
-dev:
+# Build dev image
+build-dev:
 	docker build -f Dockerfile -t $(DEV_IMAGE_NAME) .
 
-release:
+# Build release image
+build-release:
 	docker build -f Dockerfile -t $(RELEASE_IMAGE_NAME) --target runtime .
 
-# Build locally
-local:
-	mkdir -p Local
-	go build -o Local/daggerfall ./cmd/server/main.go
+# Create Local directory if missing
+local-dir:
+	mkdir -p $(LOCAL_DIR)
 
-# Run tests
-test:
-	$(DOCKER_RUN) go test ./... -v
-
-# Create DB volume
+# Create Docker volume for DB
 create-volume:
-	docker volume create $(DB_VOLUME)
+	docker volume create $(DB_VOLUME) || true
 
-# Initialize DB
-initdb: create-volume
-ifeq ($(MODE),release)
-	$(DOCKER_RUN) ./daggerfall -initdb -dbpath=$(DB_PATH)
-else
-	$(DOCKER_RUN) go run cmd/server/main.go -initdb -dbpath=$(DB_PATH)
-endif
-
-# Run in Docker
-run: create-volume
-	docker run -it \
-		$(CODE_MOUNT) \
+# Initialize DB in dev mode
+initdb-dev: local-dir create-volume
+	docker run --rm -it \
+		-v $(PWD):/app \
 		-v $(DB_VOLUME):/home/daggeruser \
-		-w $(CONTAINER_WORKDIR) \
-		-p 8080:8080 \
-		-p 7777:7777 \
-		$(IMAGE_NAME)
+		-w /app \
+		$(DEV_IMAGE_NAME) \
+		go run cmd/server/main.go -initdb -dbpath=$(DB_PATH_REL)
 
-# Shortcut for release mode run
-run-release: MODE=release
-run-release: run
+# Initialize DB in release mode
+initdb-release: create-volume
+	docker run --rm -it \
+		-v $(DB_VOLUME):/home/daggeruser \
+		-w /home/daggeruser \
+		$(RELEASE_IMAGE_NAME) \
+		./daggerfall -initdb -dbpath=$(DB_PATH_REL)
 
-# Clean local build
+# Run dev container
+run-dev: local-dir create-volume
+	docker run -it \
+		-v $(PWD):/app \
+		-v $(DB_VOLUME):/home/daggeruser \
+		-w /app \
+		-p 8080:8080 -p 7777:7777 \
+		$(DEV_IMAGE_NAME)
+
+# Run release container
+run-release: create-volume
+	docker run -it \
+		-v $(DB_VOLUME):/home/daggeruser \
+		-w /home/daggeruser \
+		-p 8080:8080 -p 7777:7777 \
+		$(RELEASE_IMAGE_NAME)
+
+# Clean local build files
 clean:
-	rm -rf Local/daggerfall Local/daggerfall.db
+	rm -rf Local/daggerfall Local/
 
-# Full clean including Docker artifacts
+# Full clean
 fclean: clean
 	docker ps -aq | xargs -r docker stop
 	docker ps -aq | xargs -r docker rm
 	docker images -aq | xargs -r docker rmi -f
 	docker volume ls -q | xargs -r docker volume rm
- 
