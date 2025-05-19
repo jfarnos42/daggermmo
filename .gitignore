@@ -1,0 +1,6 @@
+# Ignore certificates
+cert.pem
+key.pem
+
+# Ignore all .txt files
+*.txt

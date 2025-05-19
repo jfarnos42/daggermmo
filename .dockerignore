@@ -6,5 +6,6 @@
 *.swo
 .git
 .gitignore
+daggerfall.db
 Dockerfile
 README.md
